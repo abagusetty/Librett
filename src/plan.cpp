@@ -464,7 +464,11 @@ size_t TensorSplit::shmemAlloc(int sizeofType) const {
 #ifdef LIBRETT_USES_HIP
       vol = TILEDIM*TILEDIM*sizeofType;
 #else // CUDA and SYCL
+      #ifdef LIBRETT_SUBGROUP_SIZE64 //ENABLE_SYCL_HIP
+      vol = (TILEDIM)*TILEDIM*sizeofType;
+      #else
       vol = (TILEDIM+1)*TILEDIM*sizeofType;
+      #endif
 #endif
     }
     break;

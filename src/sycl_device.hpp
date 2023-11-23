@@ -45,7 +45,13 @@ namespace Librett {
     }
     void set_min_sub_group_size(int min_sub_group_size) {
       //_warpSize = min_sub_group_size;
+      #if LIBRETT_SUBGROUP_SIZE64
+      _warpSize = 64;
+      #elif LIBRETT_SUBGROUP_SIZE32
       _warpSize = 32;
+      #else
+      _warpSize = 32;
+      #endif
     }
     void set_local_mem_size(size_t local_mem_size) {
       _local_mem_size = local_mem_size;
