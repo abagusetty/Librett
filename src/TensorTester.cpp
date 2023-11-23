@@ -42,7 +42,7 @@ __global__ void setTensorCheckPatternKernel(unsigned int* data, unsigned int nda
 template<typename T>
 #if LIBRETT_USES_SYCL
 void checkTransposeKernel(T* data, unsigned int ndata, int rank, TensorConv* glTensorConv,
-  TensorError_t* glError, int* glFail, sycl::nd_item<3>& item, uint8_t *dpct_local)
+  TensorError_t* glError, int* glFail, sycl::nd_item<3>& item, unsigned int *dpct_local)
 #else
 __global__ void checkTransposeKernel(T* data, unsigned int ndata, int rank, TensorConv* glTensorConv,
   TensorError_t* glError, int* glFail)
@@ -248,7 +248,7 @@ bool TensorTester::checkTranspose(int rank, int *dim, int *permutation, T *data)
   int shmemsize = numthread*sizeof(unsigned int);
 #if LIBRETT_USES_SYCL
   this->tt_gpustream->submit([&](sycl::handler &cgh) {
-    sycl::local_accessor<uint8_t, 1> dpct_local_acc_ct1{sycl::range<1>(shmemsize), cgh};
+    sycl::local_accessor<unsigned int, 1> dpct_local_acc_ct1{sycl::range<1>(numthread), cgh};
 
     auto d_tensorConv_ct3 = d_tensorConv;
     auto d_error_ct4 = d_error;

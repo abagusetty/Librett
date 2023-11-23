@@ -474,7 +474,7 @@ void countPacked(const int volMmk, const int volMbar,
   const TensorConvInOut* RESTRICT gl_Mmk,
   const TensorConvInOut* RESTRICT gl_Mbar,
   const int accWidth, const int cacheWidth,
-  MemStat* RESTRICT glMemStat, sycl::nd_item<3>& item, uint8_t *dpct_local)
+  MemStat* RESTRICT glMemStat, sycl::nd_item<3>& item, int *dpct_local)
 #else // CUDA or HIP
 __global__ void
 __launch_bounds__(1024, 1)
@@ -648,7 +648,7 @@ void countPackedSplit( const int splitDim, const int volMmkUnsplit, const int vo
   const TensorConvInOut* RESTRICT glMmk,
   const TensorConvInOut* RESTRICT glMbar,
   const int accWidth, const int cacheWidth,
-  MemStat* RESTRICT glMemStat, sycl::nd_item<3>& item, uint8_t *dpct_local)
+  MemStat* RESTRICT glMemStat, sycl::nd_item<3>& item, int *dpct_local)
 #else // HIP, CUDA
 __global__ void
 __launch_bounds__(1024, 1)
@@ -1033,7 +1033,7 @@ bool librettGpuModelKernel(librettPlan_t &plan, const int accWidth, const int ca
 #if LIBRETT_USES_SYCL
   #define CALL0(NREG)                                                          \
   plan.stream->submit([&](sycl::handler &cgh) {                                \
-    sycl::local_accessor<uint8_t, 1> dpct_local_acc_ct1(ts.volMmk, cgh);       \
+    sycl::local_accessor<int, 1> dpct_local_acc_ct1(ts.volMmk, cgh);    \
                                                                                \
     auto ts_volMmk_ct0 = ts.volMmk;                                            \
     auto ts_volMbar_ct1 = ts.volMbar;                                          \
@@ -1083,7 +1083,7 @@ bool librettGpuModelKernel(librettPlan_t &plan, const int accWidth, const int ca
 #if LIBRETT_USES_SYCL
   #define CALL0(NREG)                                                          \
   plan.stream->submit([&](sycl::handler &cgh) {                                \
-    sycl::local_accessor<uint8_t, 1> dpct_local_acc_ct1{volMmkSplit, cgh};     \
+    sycl::local_accessor<int, 1> dpct_local_acc_ct1{volMmkSplit, cgh};     \
                                                                                \
     auto ts_splitDim_ct0 = ts.splitDim;                                        \
     auto ts_volMmkUnsplit_ct1 = ts.volMmkUnsplit;                              \
