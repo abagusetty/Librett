@@ -42,7 +42,7 @@ __global__ void setTensorCheckPatternKernel(unsigned int* data, unsigned int nda
 template<typename T>
 #if LIBRETT_USES_SYCL
 void checkTransposeKernel(T* data, unsigned int ndata, int rank, TensorConv* glTensorConv,
-  TensorError_t* glError, int* glFail, sycl::nd_item<3>& item, sycl::raw_local_ptr<unsigned int> dpct_local)
+  TensorError_t* glError, int* glFail, sycl::nd_item<3>& item, sycl::raw_local_ptr<unsigned int> sycl_local)
 #else
 __global__ void checkTransposeKernel(T* data, unsigned int ndata, int rank, TensorConv* glTensorConv,
   TensorError_t* glError, int* glFail)
@@ -53,7 +53,7 @@ __global__ void checkTransposeKernel(T* data, unsigned int ndata, int rank, Tens
   sycl::group wrk_grp = item.get_group();
   sycl::sub_group sg = item.get_sub_group();
   int warpSize = sg.get_local_range().get(0);
-  auto shPos = (unsigned int *)dpct_local.get();
+  auto shPos = (unsigned int *)sycl_local.get();
 #elif LIBRETT_USES_HIP
   HIP_DYNAMIC_SHARED( unsigned int, shPos)
 #elif LIBRETT_USES_CUDA
@@ -244,7 +244,7 @@ bool TensorTester::checkTranspose(int rank, int *dim, int *permutation, T *data)
   int shmemsize = numthread*sizeof(unsigned int);
 #if LIBRETT_USES_SYCL
   this->tt_gpustream->submit([&](sycl::handler &cgh) {
-    sycl::local_accessor<unsigned int, 1> dpct_local_acc_ct1{sycl::range<1>(numthread), cgh};
+    sycl::local_accessor<unsigned int, 1> sycl_local_acc_ct1{sycl::range<1>(numthread), cgh};
 
     auto d_tensorConv_ct3 = d_tensorConv;
     auto d_error_ct4 = d_error;
@@ -254,7 +254,7 @@ bool TensorTester::checkTranspose(int rank, int *dim, int *permutation, T *data)
                                        sycl::range<3>(1,1,numthread)),
             [=](sycl::nd_item<3> item) {
                checkTransposeKernel(data, ndata, rank, d_tensorConv_ct3,
-               d_error_ct4, d_fail_ct5, item, dpct_local_acc_ct1.get_multi_ptr<sycl::access::decorated::no>());
+               d_error_ct4, d_fail_ct5, item, sycl_local_acc_ct1.get_multi_ptr<sycl::access::decorated::no>());
             });
   });
 
