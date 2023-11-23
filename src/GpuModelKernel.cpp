@@ -202,11 +202,7 @@ __gpu_inline__ void countCacheLines(int* segbuf, const int n,
       }
     }
   }
-  #if LIBRETT_USES_SYCL
-  sycl::group_barrier( wrk_grp );
-  #else
   syncthreads();
-  #endif
 
   for (int i = threadIdx_x; i < n; i += blockDim_x) {
     int seg = segbuf[i];
@@ -217,11 +213,8 @@ __gpu_inline__ void countCacheLines(int* segbuf, const int n,
   }
 
   // Clear top bits
-  #if LIBRETT_USES_SYCL
-  sycl::group_barrier( wrk_grp );
-  #else
   syncthreads();
-  #endif
+
   for (int i = threadIdx_x; i < n; i += blockDim_x) {
     segbuf[i] &= lowbits;
   }
@@ -474,7 +467,7 @@ void countPacked(const int volMmk, const int volMbar,
   const TensorConvInOut* RESTRICT gl_Mmk,
   const TensorConvInOut* RESTRICT gl_Mbar,
   const int accWidth, const int cacheWidth,
-  MemStat* RESTRICT glMemStat, sycl::nd_item<3>& item, int *dpct_local)
+  MemStat* RESTRICT glMemStat, sycl::nd_item<3>& item, sycl::raw_local_ptr<int> dpct_local)
 #else // CUDA or HIP
 __global__ void
 __launch_bounds__(1024, 1)
@@ -490,7 +483,7 @@ countPacked(const int volMmk, const int volMbar,
   sycl::group wrk_grp = item.get_group();
   sycl::sub_group sg = item.get_sub_group();
   const int warpSize = sg.get_local_range().get(0);
-  auto shSegOut = (int *)dpct_local;
+  auto shSegOut = dpct_local.get();
 #elif LIBRETT_USES_HIP
   HIP_DYNAMIC_SHARED( int, shSegOut)
 #elif LIBRETT_USES_CUDA
@@ -648,7 +641,7 @@ void countPackedSplit( const int splitDim, const int volMmkUnsplit, const int vo
   const TensorConvInOut* RESTRICT glMmk,
   const TensorConvInOut* RESTRICT glMbar,
   const int accWidth, const int cacheWidth,
-  MemStat* RESTRICT glMemStat, sycl::nd_item<3>& item, int *dpct_local)
+  MemStat* RESTRICT glMemStat, sycl::nd_item<3>& item, sycl::raw_local_ptr<int> dpct_local)
 #else // HIP, CUDA
 __global__ void
 __launch_bounds__(1024, 1)
@@ -665,7 +658,7 @@ countPackedSplit( const int splitDim, const int volMmkUnsplit, const int volMbar
   sycl::group wrk_grp = item.get_group();
   sycl::sub_group sg = item.get_sub_group();
   const int warpSize = sg.get_local_range().get(0);
-  auto shSegOut = (int *)dpct_local;
+  auto shSegOut = dpct_local.get();
 #elif LIBRETT_USES_HIP
   HIP_DYNAMIC_SHARED( int, shSegOut)
 #elif LIBRETT_USES_CUDA
@@ -1051,7 +1044,7 @@ bool librettGpuModelKernel(librettPlan_t &plan, const int accWidth, const int ca
           countPacked<NREG>(ts_volMmk_ct0, ts_volMbar_ct1, ts_sizeMmk_ct2,     \
                             ts_sizeMbar_ct3, plan_Mmk_ct4, plan_Mbar_ct5,      \
                             accWidth_ct6, cacheWidth_ct7, devMemStat_ct8,      \
-                            item, dpct_local_acc_ct1.get_pointer());       \
+                            item, dpct_local_acc_ct1.get_multi_ptr<sycl::access::decorated::no>()); \
         });                                                                    \
   });
 #else // CUDA or HIP
@@ -1106,7 +1099,7 @@ bool librettGpuModelKernel(librettPlan_t &plan, const int accWidth, const int ca
               ts_sizeMmk_ct3, ts_sizeMbar_ct4, plan_cuDimMm_ct5,               \
               plan_cuDimMk_ct6, plan_Mmk_ct7, plan_Mbar_ct8, accWidth_ct9,     \
               cacheWidth_ct10, devMemStat_ct11, item,                      \
-              dpct_local_acc_ct1.get_pointer());                               \
+              dpct_local_acc_ct1.get_multi_ptr<sycl::access::decorated::no>());                               \
         });                                                                    \
   });
 #else // CUDA or HIP

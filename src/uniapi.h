@@ -59,6 +59,7 @@ SOFTWARE.
   #define blockIdx_z    item.get_group(0)
   #define blockDim_z    item.get_local_range().get(0)
   #define gridDim_z     item.get_group_range(0)
+  #define syncthreads() sycl::group_barrier(sycl::ext::oneapi::experimental::this_group<3>())
   #define sharedMemPerBlock
   #define numthread_x   numthread[2]
   #define numthread_y   numthread[1]
@@ -144,7 +145,7 @@ extern SYCL_EXTERNAL sycl::vec<unsigned, 4> ballot(sycl::sub_group, bool);
   #define gpu_shfl_xor(a,b)   sycl::ext::oneapi::experimental::this_sub_group().shuffle_xor(a,b)
   #define gpu_shuffle(a,b)    sycl::ext::oneapi::experimental::this_sub_group().shuffle(a,b)
   #define gpu_shfl_down(a,b)  sycl::ext::oneapi::experimental::this_sub_group().shuffle_down(a,b)
-#define gpu_atomicAdd(a,b)    sycl::atomic_ref<int, sycl::memory_order::relaxed, sycl::memory_scope::device, sycl::access::address_space::global_space>((a)).fetch_add(b)
+  #define gpu_atomicAdd(a,b)  sycl::atomic_ref<int, sycl::memory_order::relaxed, sycl::memory_scope::device, sycl::access::address_space::global_space>((a)).fetch_add(b)
 #elif LIBRETT_USES_HIP
   #define gpu_shfl_xor(a,b)   __shfl_xor(a,b)
   #define gpu_shuffle(a,b)    __shfl(a,b)

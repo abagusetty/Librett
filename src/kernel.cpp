@@ -136,11 +136,7 @@ __global__ void transposeTiled(const int numMm, const int volMbar, const int siz
     int posOut = posMajorOut + posMinorOut;
 
     // Read from global memory
-    #if LIBRETT_USES_SYCL
-    sycl::group_barrier( wrk_grp );
-    #else
     syncthreads();
-    #endif
 
     // Read data into shared memory tile
 #pragma unroll
@@ -154,11 +150,7 @@ __global__ void transposeTiled(const int numMm, const int volMbar, const int siz
     }
 
     // Write to global memory
-    #if LIBRETT_USES_SYCL
-    sycl::group_barrier( wrk_grp );
-    #else
     syncthreads();
-    #endif
 
 #pragma unroll
     for (int j=0; j < TILEDIM; j += TILEROWS) {
@@ -186,13 +178,13 @@ __global__ void transposePacked(
   const TensorConv* RESTRICT gl_Msh,
   const T* RESTRICT dataIn, T* RESTRICT dataOut
   #if LIBRETT_USES_SYCL
-  , sycl::nd_item<3> item, uint8_t *dpct_local
+  , sycl::nd_item<3> item, sycl::raw_local_ptr<uint8_t> dpct_local
   #endif
   )
 {
   // Shared memory. volMmk elements
 #if LIBRETT_USES_SYCL
-  auto shBuffer_char = (char *)dpct_local;
+  auto shBuffer_char = (char *)dpct_local.get();
   sycl::group wrk_grp = item.get_group();
   sycl::sub_group sg = item.get_sub_group();
   const int warpSize = sg.get_local_range().get(0);
@@ -285,11 +277,7 @@ __global__ void transposePacked(
     }
 #endif
 
-    #if LIBRETT_USES_SYCL
-    sycl::group_barrier( wrk_grp );
-    #else
     syncthreads();
-    #endif
 
     // Read from global memory
 #pragma unroll
@@ -299,11 +287,7 @@ __global__ void transposePacked(
       if (posMmk < volMmk) shBuffer[posMmk] = dataIn[posIn];
     }
 
-    #if LIBRETT_USES_SYCL
-    sycl::group_barrier( wrk_grp );
-    #else
     syncthreads();
-    #endif
 
     // Write to global memory
 #pragma unroll
@@ -333,13 +317,13 @@ __global__ void transposePackedSplit(
   const TensorConv* RESTRICT glMsh,
   const T* RESTRICT dataIn, T* RESTRICT dataOut
   #if LIBRETT_USES_SYCL
-  , sycl::nd_item<3>& item, uint8_t *dpct_local
+  , sycl::nd_item<3>& item, sycl::raw_local_ptr<uint8_t> dpct_local
   #endif
   )
 {
   // Shared memory. max(volSplit)*volMmkUnsplit T elements
 #if LIBRETT_USES_SYCL
-  auto shBuffer_char = (char *)dpct_local;
+  auto shBuffer_char = (char *)dpct_local.get();
   sycl::group wrk_grp = item.get_group();
   sycl::sub_group sg = item.get_sub_group();
   const int warpSize = sg.get_local_range().get(0);
@@ -451,11 +435,7 @@ __global__ void transposePackedSplit(
 #endif
 
     // Read from global memory
-    #if LIBRETT_USES_SYCL
-    sycl::group_barrier( wrk_grp );
-    #else
     syncthreads();
-    #endif
 
 #pragma unroll
     for (int j=0; j < numRegStorage; j++) {
@@ -465,11 +445,7 @@ __global__ void transposePackedSplit(
     }
 
     // Write to global memory
-    #if LIBRETT_USES_SYCL
-    sycl::group_barrier( wrk_grp );
-    #else
     syncthreads();
-    #endif
 
 #pragma unroll
     for (int j=0; j < numRegStorage; j++) {
@@ -710,6 +686,31 @@ void librettKernelSetSharedMemConfig() {
   cudaCheck(cudaFuncSetSharedMemConfig(transposeTiledCopy<double>, cudaSharedMemBankSizeEightByte));
 
 #endif // LIBRETT_USES_CUDA
+
+#if LIBRETT_USES_HIP
+  // #define CALL(NREG) hipCheck(hipFuncSetSharedMemConfig(transposePacked<float, NREG>, hipSharedMemBankSizeFourByte ))
+  // #include "calls.h"
+  // #undef CALL
+
+  // #define CALL(NREG) hipCheck(hipFuncSetSharedMemConfig(transposePacked<double, NREG>, hipSharedMemBankSizeEightByte ))
+  // #include "calls.h"
+  // #undef CALL
+
+  // #define CALL(NREG) hipCheck(hipFuncSetSharedMemConfig(transposePackedSplit<float, NREG>, hipSharedMemBankSizeFourByte ))
+  // #include "calls.h"
+  // #undef CALL
+
+  // #define CALL(NREG) hipCheck(hipFuncSetSharedMemConfig(transposePackedSplit<double, NREG>, hipSharedMemBankSizeEightByte ))
+  // #include "calls.h"
+  // #undef CALL
+
+  hipCheck(hipFuncSetSharedMemConfig((transposeTiled<float>), hipSharedMemBankSizeFourByte));
+  hipCheck(hipFuncSetSharedMemConfig((transposeTiledCopy<float>), hipSharedMemBankSizeFourByte));
+
+  hipCheck(hipFuncSetSharedMemConfig(transposeTiled<double>, hipSharedMemBankSizeEightByte));
+  hipCheck(hipFuncSetSharedMemConfig(transposeTiledCopy<double>, hipSharedMemBankSizeEightByte));
+
+#endif // LIBRETT_USES_HIP
 }
 
 // Caches for PackedSplit kernels. One cache for all devices
@@ -1094,7 +1095,7 @@ bool librettKernel(librettPlan_t &plan, void *dataIn, void *dataOut)
               transposePacked<TYPE, NREG>(                              \
                 ts_volMmk_ct0, ts_volMbar_ct1, ts_sizeMmk_ct2, ts_sizeMbar_ct3, \
                 plan_Mmk_ct4, plan_Mbar_ct5, plan_Msh_ct6, dataIn_ct7,  \
-                dataOut_ct8, item, dpct_local_acc_ct1.get_pointer());   \
+                dataOut_ct8, item, dpct_local_acc_ct1.get_multi_ptr<sycl::access::decorated::no>());   \
             });                                                         \
         });                                                             \
           event.wait();                                                 \
@@ -1150,7 +1151,7 @@ bool librettKernel(librettPlan_t &plan, void *dataIn, void *dataOut)
                       ts_sizeMmk_ct3, ts_sizeMbar_ct4, plan_cuDimMm_ct5,            \
                       plan_cuDimMk_ct6, plan_Mmk_ct7, plan_Mbar_ct8, plan_Msh_ct9,  \
                       dataIn_ct10, dataOut_ct11, item,                          \
-                      dpct_local_acc_ct1.get_pointer());                            \
+                      dpct_local_acc_ct1.get_multi_ptr<sycl::access::decorated::no>()); \
                 });                                                                 \
           }); plan.stream->wait();
         #else // CUDA or HIP

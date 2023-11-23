@@ -25,9 +25,6 @@ SOFTWARE.
 #ifndef LIBRETTKERNEL_H
 #define LIBRETTKERNEL_H
 
-#ifdef LIBRETT_USES_SYCL
-  #include <sycl/sycl.hpp>
-#endif
 #include "plan.h"
 #include "uniapi.h"
 
