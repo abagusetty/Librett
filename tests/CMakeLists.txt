@@ -10,7 +10,8 @@ endforeach()
 
 # add AoT compilation for Intel GPU
 if(ENABLE_SYCL)
-  if(NOT DEFINED ENABLE_SYCL_HIP AND NOT DEFINED ENABLE_SYCL_CUDA)
+  if(ENABLE_SYCL_HIP OR ENABLE_SYCL_CUDA)
+  else()
     foreach(_exec ${LIBRETT_TESTS})
       target_compile_options(${_exec} PRIVATE -fsycl -fsycl-targets=spir64_gen -Xsycl-target-backend "-device 12.60.7" -DPERFTEST)
       target_link_options(${_exec} PRIVATE -fsycl -fsycl-targets=spir64_gen -Xsycl-target-backend "-device 12.60.7")
