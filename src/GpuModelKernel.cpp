@@ -70,22 +70,17 @@ struct MemStat {
 // NOTE: c and d on inactive warps must be 1 !!
 //
 __gpu_inline__
-#if LIBRETT_USES_SYCL
-int tensorPos(const int p, const int rank, const int c, const int d, const int ct, sycl::nd_item<3>& item)
-#else // CUDA or HIP
-int tensorPos(const int p, const int rank, const int c, const int d, const int ct, const int numLane=warpSize)
-#endif
+int tensorPos(const int p, const int rank, const int c, const int d, const int ct)
 {
-#if LIBRETT_USES_SYCL
-  const int numLane = item.get_sub_group().get_local_range().get(0);
-#endif
   int r = ((p / c) % d) * ct;
-#pragma unroll
-  for (int i=numLane/2; i >= 1; i/=2) {
+#if LIBRETT_USES_SYCL
+  r = sycl::reduce_over_group(sycl::ext::oneapi::experimental::this_sub_group(), r, sycl::plus<int>());
+#else
+  for (int i=warpSize/2; i >= 1; i/=2) {
     r += gpu_shfl_xor(r,i);
   }
+#endif
   return r;
-
 }
 
 //
@@ -93,18 +88,14 @@ int tensorPos(const int p, const int rank, const int c, const int d, const int c
 // memory at pos using warp lanes 0, ..., n - 1
 //
 __gpu_inline__
-int countGlTransactions(const int pos, const int n, const int accWidth, const int warpLane
-#if LIBRETT_USES_SYCL
-                        , sycl::nd_item<3>& item
-#endif
-  )
+int countGlTransactions(const int pos, const int n, const int accWidth, const int warpLane)
 {
   int seg0 = pos/accWidth;
   int srcLane = (warpLane == 0 || warpLane >= n) ? (warpLane) : (warpLane - 1);
   int seg1 = gpu_shuffle(seg0, srcLane);
   #if LIBRETT_USES_SYCL
     unsigned mask = 0u;
-    auto sg_mask = sycl::ext::oneapi::group_ballot(item.get_sub_group(), seg0 != seg1);
+    auto sg_mask = sycl::ext::oneapi::group_ballot(sycl::ext::oneapi::experimental::this_sub_group(), seg0 != seg1);
     sg_mask.extract_bits(mask, 0);
     int count = sycl::popcount(mask) + 1;
   #elif LIBRETT_USES_HIP // AMD change
@@ -248,18 +239,18 @@ __global__ void runCountersKernel(const int* posData, const int numPosData,
       unsigned mask = 0u;
       auto sg_mask = sycl::ext::oneapi::group_ballot(sg, flag);
       sg_mask.extract_bits(mask, 0);
-      int ffsval = __builtin_ffs((unsigned long long int)mask) - 1;
+      //int ffsval = __builtin_ffs((unsigned long long int)mask) - 1;
+      //int ffsval = (mask == 0) ? (0-1) : (sycl::ctz(mask)-1);
+      int ffsval=0;
       int n = (sycl::any_of_group(sg, flag)) ? ffsval : warpSize;
-      int tran = countGlTransactions(pos, n, accWidth, warpLane, item);
     #elif LIBRETT_USES_HIP
       int ffsval = __ffsll((unsigned long long int)__ballot(flag)) - 1;  // AMD change
       int n = (__any(flag)) ? ffsval : warpSize;
-      int tran = countGlTransactions(pos, n, accWidth, warpLane);
     #elif LIBRETT_USES_CUDA
       int ffsval = __ffs(__ballot_sync(0xffffffff,flag)) - 1;
       int n = (__any_sync(0xffffffff,flag)) ? ffsval : warpSize;
-      int tran = countGlTransactions(pos, n, accWidth, warpLane);
     #endif
+    int tran = countGlTransactions(pos, n, accWidth, warpLane);
 
     int cl_full = 0;
     int cl_part = 0;
@@ -428,7 +419,7 @@ countTiled(const int numMm, const int volMbar, const int sizeMbar,
         auto sg_mask = sycl::ext::oneapi::group_ballot(sg, maskIny & (1 << j));
         sg_mask.extract_bits(mask, 0);
         int n = sycl::popcount(mask);
-        memStat.gld_tran += countGlTransactions(posIn, n, accWidth, warpLane, item);
+        memStat.gld_tran += countGlTransactions(posIn, n, accWidth, warpLane);
         memStat.gld_req += sycl::any_of_group(sg, n > 0);
       #elif LIBRETT_USES_HIP
 	int n = __popcll((unsigned long long int)__ballot(maskIny & (1 << j))); // AMD change
@@ -449,7 +440,7 @@ countTiled(const int numMm, const int volMbar, const int sizeMbar,
         auto sg_mask = sycl::ext::oneapi::group_ballot(sg, maskOutx & (1 << j));
         sg_mask.extract_bits(mask, 0);
         int n = sycl::popcount(mask);
-        memStat.gst_tran += countGlTransactions(posOut, n, accWidth, warpLane, item);
+        memStat.gst_tran += countGlTransactions(posOut, n, accWidth, warpLane);
         memStat.gst_req += sycl::any_of_group(sg, n > 0);
         countCacheLines(posOut, n, cacheWidth, warpLane, memStat.cl_full_l2, memStat.cl_part_l2, item);
       #elif LIBRETT_USES_HIP
@@ -577,7 +568,7 @@ countPacked(const int volMmk, const int volMbar,
         auto sg_mask = sycl::ext::oneapi::group_ballot(sg, posMmk < volMmk);
         sg_mask.extract_bits(mask, 0);
         int n = sycl::popcount(mask);
-        memStat.gld_tran += countGlTransactions(posIn, n, accWidth, warpLane, item);
+        memStat.gld_tran += countGlTransactions(posIn, n, accWidth, warpLane);
         memStat.gld_req += sycl::any_of_group(sg, n > 0);
       #elif LIBRETT_USES_HIP
 	int n = __popcll((unsigned long long int)__ballot(posMmk < volMmk));  // AMD change
@@ -600,7 +591,7 @@ countPacked(const int volMmk, const int volMbar,
         auto sg_mask = sycl::ext::oneapi::group_ballot(sg, posMmk < volMmk);
         sg_mask.extract_bits(mask, 0);
         int n = sycl::popcount(mask);
-        memStat.gst_tran += countGlTransactions(posOut, n, accWidth, warpLane, item);
+        memStat.gst_tran += countGlTransactions(posOut, n, accWidth, warpLane);
         memStat.gst_req += sycl::any_of_group(sg, n > 0);
       #elif LIBRETT_USES_HIP
 	int n = __popcll((unsigned long long int)__ballot(posMmk < volMmk));  // AMD change
@@ -773,7 +764,7 @@ countPackedSplit( const int splitDim, const int volMmkUnsplit, const int volMbar
         auto sg_mask = sycl::ext::oneapi::group_ballot(sg, posMmk < volMmkSplit);
         sg_mask.extract_bits(mask, 0);
         int n = sycl::popcount(mask);
-        memStat.gld_tran += countGlTransactions(posIn, n, accWidth, warpLane, item);
+        memStat.gld_tran += countGlTransactions(posIn, n, accWidth, warpLane);
         memStat.gld_req += sycl::any_of_group(sg, n > 0);
       #elif LIBRETT_USES_HIP
 	int n = __popcll((unsigned long long int)__ballot(posMmk < volMmkSplit));  // AMD change
@@ -796,7 +787,7 @@ countPackedSplit( const int splitDim, const int volMmkUnsplit, const int volMbar
         auto sg_mask = sycl::ext::oneapi::group_ballot(sg, posMmk < volMmkSplit);
         sg_mask.extract_bits(mask, 0);
         int n = sycl::popcount(mask);
-        memStat.gst_tran += countGlTransactions(posOut, n, accWidth, warpLane, item);
+        memStat.gst_tran += countGlTransactions(posOut, n, accWidth, warpLane);
         memStat.gst_req += sycl::any_of_group(sg, n > 0);
       #elif LIBRETT_USES_HIP
 	int n = __popcll((unsigned long long int)__ballot(posMmk < volMmkSplit));  // AMD change
@@ -901,11 +892,7 @@ countTiledCopy(const int numMm, const int volMbar, const int sizeMbar,
 
     // Read global memory
     {
-      #if LIBRETT_USES_SYCL
-        int pos0 = tensorPos(posMbar, sizeMbar, Mbar.c_in, Mbar.d_in, Mbar.ct_in, item);
-      #else // CUDA or HIP
-        int pos0 = tensorPos(posMbar, sizeMbar, Mbar.c_in, Mbar.d_in, Mbar.ct_in);
-      #endif
+      int pos0 = tensorPos(posMbar, sizeMbar, Mbar.c_in, Mbar.d_in, Mbar.ct_in);
       pos0 += x + y*cuDimMk;
 
 #pragma unroll
@@ -916,7 +903,7 @@ countTiledCopy(const int numMm, const int volMbar, const int sizeMbar,
           auto sg_mask = sycl::ext::oneapi::group_ballot(sg, (x < tiledVol.x()) && (y + j < tiledVol.y()));
           sg_mask.extract_bits(mask, 0);
           int n = sycl::popcount(mask);
-          memStat.gld_tran += countGlTransactions(pos, n, accWidth, warpLane, item);
+          memStat.gld_tran += countGlTransactions(pos, n, accWidth, warpLane);
           memStat.gld_req += sycl::any_of_group(sg, n > 0);
 	#elif LIBRETT_USES_HIP
 	  int n = __popcll((unsigned long long int)__ballot((x < tiledVol.x) && (y + j < tiledVol.y))); // AMD change
@@ -932,11 +919,7 @@ countTiledCopy(const int numMm, const int volMbar, const int sizeMbar,
 
     // Write global memory
     {
-      #if LIBRETT_USES_SYCL
-        int pos0 = tensorPos(posMbar, sizeMbar, Mbar.c_out, Mbar.d_out, Mbar.ct_out, item);
-      #else // CUDA or HIP
-	int pos0 = tensorPos(posMbar, sizeMbar, Mbar.c_out, Mbar.d_out, Mbar.ct_out);
-      #endif
+      int pos0 = tensorPos(posMbar, sizeMbar, Mbar.c_out, Mbar.d_out, Mbar.ct_out);
       pos0 += x + y*cuDimMm;
 
 #pragma unroll
@@ -947,7 +930,7 @@ countTiledCopy(const int numMm, const int volMbar, const int sizeMbar,
           auto sg_mask = sycl::ext::oneapi::group_ballot(sg, (x < tiledVol.x()) && (y + j < tiledVol.y()));
           sg_mask.extract_bits(mask, 0);
           int n = sycl::popcount(mask);
-          memStat.gst_tran += countGlTransactions(pos, n, accWidth, warpLane, item);
+          memStat.gst_tran += countGlTransactions(pos, n, accWidth, warpLane);
           memStat.gst_req += sycl::any_of_group(sg, n > 0);
           countCacheLines(pos, n, cacheWidth, warpLane, memStat.cl_full_l2, memStat.cl_part_l2, item);
 	#elif LIBRETT_USES_HIP
