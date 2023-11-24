@@ -103,7 +103,10 @@ int countGlTransactions(const int pos, const int n, const int accWidth, const in
   int srcLane = (warpLane == 0 || warpLane >= n) ? (warpLane) : (warpLane - 1);
   int seg1 = gpu_shuffle(seg0, srcLane);
   #if LIBRETT_USES_SYCL
-    int count = sycl::popcount(ballot(item.get_sub_group(), seg0 != seg1).s0()) + 1;
+    unsigned mask = 0u;
+    auto sg_mask = sycl::ext::oneapi::group_ballot(item.get_sub_group(), seg0 != seg1);
+    sg_mask.extract_bits(mask, 0);
+    int count = sycl::popcount(mask) + 1;
   #elif LIBRETT_USES_HIP // AMD change
     int count = __popcll((unsigned long long int)__ballot(seg0 != seg1)) + 1;
   #elif LIBRETT_USES_CUDA
@@ -242,7 +245,10 @@ __global__ void runCountersKernel(const int* posData, const int numPosData,
     int pos = posData[i];
     int flag = (pos == -1);
     #if LIBRETT_USES_SYCL
-      int ffsval = __builtin_ffs((unsigned long long int)ballot(sg, flag)[0]) - 1;
+      unsigned mask = 0u;
+      auto sg_mask = sycl::ext::oneapi::group_ballot(sg, flag);
+      sg_mask.extract_bits(mask, 0);
+      int ffsval = __builtin_ffs((unsigned long long int)mask) - 1;
       int n = (sycl::any_of_group(sg, flag)) ? ffsval : warpSize;
       int tran = countGlTransactions(pos, n, accWidth, warpLane, item);
     #elif LIBRETT_USES_HIP
@@ -371,8 +377,15 @@ countTiled(const int numMm, const int volMbar, const int sizeMbar,
   const int yout = by + threadIdx_x;
 
 #if LIBRETT_USES_SYCL
-  const unsigned int maskIny = ballot(sg, (yin + warpLane < tiledVol.y())).s0() * (xin < tiledVol.x());
-  const unsigned int maskOutx = ballot(sg, (xout + warpLane < tiledVol.x())).s0() * (yout < tiledVol.y());
+  unsigned int maskIny{};
+  auto sg_maskIny = sycl::ext::oneapi::group_ballot(sg, (yin + warpLane < tiledVol.y()));
+  sg_maskIny.extract_bits(maskIny, 0);
+  maskIny *= (xin < tiledVol.x());
+
+  unsigned int maskOutx{};
+  auto sg_maskOutx = sycl::ext::oneapi::group_ballot(sg, (xout + warpLane < tiledVol.x()));
+  sg_maskOutx.extract_bits(maskOutx, 0);
+  maskOutx *= (yout < tiledVol.y());
 #elif LIBRETT_USES_HIP // AMD change
   const unsigned long long int maskIny = __ballot((yin + warpLane < tiledVol.y))*(xin < tiledVol.x);
   const unsigned long long int maskOutx = __ballot((xout + warpLane < tiledVol.x))*(yout < tiledVol.y);
@@ -411,7 +424,10 @@ countTiled(const int numMm, const int volMbar, const int sizeMbar,
 #pragma unroll
     for (int j=0; j < TILEDIM; j += TILEROWS) {
       #if LIBRETT_USES_SYCL
-        int n = sycl::popcount(ballot(sg, maskIny & (1 << j))[0]);
+        unsigned mask = 0u;
+        auto sg_mask = sycl::ext::oneapi::group_ballot(sg, maskIny & (1 << j));
+        sg_mask.extract_bits(mask, 0);
+        int n = sycl::popcount(mask);
         memStat.gld_tran += countGlTransactions(posIn, n, accWidth, warpLane, item);
         memStat.gld_req += sycl::any_of_group(sg, n > 0);
       #elif LIBRETT_USES_HIP
@@ -429,7 +445,10 @@ countTiled(const int numMm, const int volMbar, const int sizeMbar,
 #pragma unroll
     for (int j=0; j < TILEDIM; j += TILEROWS) {
       #if LIBRETT_USES_SYCL
-        int n = sycl::popcount(ballot(sg, maskOutx & (1 << j))[0]);
+        unsigned mask = 0u;
+        auto sg_mask = sycl::ext::oneapi::group_ballot(sg, maskOutx & (1 << j));
+        sg_mask.extract_bits(mask, 0);
+        int n = sycl::popcount(mask);
         memStat.gst_tran += countGlTransactions(posOut, n, accWidth, warpLane, item);
         memStat.gst_req += sycl::any_of_group(sg, n > 0);
         countCacheLines(posOut, n, cacheWidth, warpLane, memStat.cl_full_l2, memStat.cl_part_l2, item);
@@ -554,7 +573,10 @@ countPacked(const int volMmk, const int volMbar,
       int posMmk = threadIdx_x + j*blockDim_x;
       int posIn = posMbarIn + posMmkIn[j];
       #if LIBRETT_USES_SYCL
-        int n = sycl::popcount(ballot(sg, posMmk < volMmk)[0]);
+        unsigned mask = 0u;
+        auto sg_mask = sycl::ext::oneapi::group_ballot(sg, posMmk < volMmk);
+        sg_mask.extract_bits(mask, 0);
+        int n = sycl::popcount(mask);
         memStat.gld_tran += countGlTransactions(posIn, n, accWidth, warpLane, item);
         memStat.gld_req += sycl::any_of_group(sg, n > 0);
       #elif LIBRETT_USES_HIP
@@ -574,7 +596,10 @@ countPacked(const int volMmk, const int volMbar,
       int posMmk = threadIdx_x + j*blockDim_x;
       int posOut = posMbarOut + posMmkOut[j];
       #if LIBRETT_USES_SYCL
-        int n = sycl::popcount(ballot(sg, posMmk < volMmk)[0]);
+        unsigned mask = 0u;
+        auto sg_mask = sycl::ext::oneapi::group_ballot(sg, posMmk < volMmk);
+        sg_mask.extract_bits(mask, 0);
+        int n = sycl::popcount(mask);
         memStat.gst_tran += countGlTransactions(posOut, n, accWidth, warpLane, item);
         memStat.gst_req += sycl::any_of_group(sg, n > 0);
       #elif LIBRETT_USES_HIP
@@ -744,7 +769,10 @@ countPackedSplit( const int splitDim, const int volMmkUnsplit, const int volMbar
       int posMmk = threadIdx_x + j*blockDim_x;
       int posIn = posMbarIn + posMmkIn[j];
       #if LIBRETT_USES_SYCL
-        int n = sycl::popcount(ballot(sg, posMmk < volMmkSplit)[0]);
+        unsigned mask = 0u;
+        auto sg_mask = sycl::ext::oneapi::group_ballot(sg, posMmk < volMmkSplit);
+        sg_mask.extract_bits(mask, 0);
+        int n = sycl::popcount(mask);
         memStat.gld_tran += countGlTransactions(posIn, n, accWidth, warpLane, item);
         memStat.gld_req += sycl::any_of_group(sg, n > 0);
       #elif LIBRETT_USES_HIP
@@ -764,7 +792,10 @@ countPackedSplit( const int splitDim, const int volMmkUnsplit, const int volMbar
       int posMmk = threadIdx_x + j*blockDim_x;
       int posOut = posMbarOut + posMmkOut[j];
       #if LIBRETT_USES_SYCL
-        int n = sycl::popcount(ballot(sg, posMmk < volMmkSplit)[0]);
+        unsigned mask = 0u;
+        auto sg_mask = sycl::ext::oneapi::group_ballot(sg, posMmk < volMmkSplit);
+        sg_mask.extract_bits(mask, 0);
+        int n = sycl::popcount(mask);
         memStat.gst_tran += countGlTransactions(posOut, n, accWidth, warpLane, item);
         memStat.gst_req += sycl::any_of_group(sg, n > 0);
       #elif LIBRETT_USES_HIP
@@ -881,7 +912,10 @@ countTiledCopy(const int numMm, const int volMbar, const int sizeMbar,
       for (int j=0; j < TILEDIM; j += TILEROWS) {
         int pos  = pos0  + j*cuDimMk;
 	#if LIBRETT_USES_SYCL
-	  int n = sycl::popcount(ballot(sg, (x < tiledVol.x()) && (y + j < tiledVol.y()))[0]);
+          unsigned mask = 0u;
+          auto sg_mask = sycl::ext::oneapi::group_ballot(sg, (x < tiledVol.x()) && (y + j < tiledVol.y()));
+          sg_mask.extract_bits(mask, 0);
+          int n = sycl::popcount(mask);
           memStat.gld_tran += countGlTransactions(pos, n, accWidth, warpLane, item);
           memStat.gld_req += sycl::any_of_group(sg, n > 0);
 	#elif LIBRETT_USES_HIP
@@ -909,7 +943,10 @@ countTiledCopy(const int numMm, const int volMbar, const int sizeMbar,
       for (int j=0; j < TILEDIM; j += TILEROWS) {
         int pos = pos0 + j*cuDimMm;
         #if LIBRETT_USES_SYCL
-	  int n = sycl::popcount(ballot(sg, (x < tiledVol.x()) && (y + j < tiledVol.y()))[0]);
+          unsigned mask = 0u;
+          auto sg_mask = sycl::ext::oneapi::group_ballot(sg, (x < tiledVol.x()) && (y + j < tiledVol.y()));
+          sg_mask.extract_bits(mask, 0);
+          int n = sycl::popcount(mask);
           memStat.gst_tran += countGlTransactions(pos, n, accWidth, warpLane, item);
           memStat.gst_req += sycl::any_of_group(sg, n > 0);
           countCacheLines(pos, n, cacheWidth, warpLane, memStat.cl_full_l2, memStat.cl_part_l2, item);

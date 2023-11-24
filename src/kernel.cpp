@@ -92,8 +92,16 @@ __global__ void transposeTiled(const int numMm, const int volMbar, const int siz
   const int yout = by + threadIdx_x;
 
 #if LIBRETT_USES_SYCL
-  const unsigned long long int maskIny = ballot(sg, (yin + warpLane < tiledVol.y())).s0() * (xin < tiledVol.x());
-  const unsigned long long int maskOutx = ballot(sg, (xout + warpLane < tiledVol.x())).s0() * (yout < tiledVol.y());
+  unsigned int maskIny{};
+  auto sg_maskIny = sycl::ext::oneapi::group_ballot(sg, (yin + warpLane < tiledVol.y()));
+  sg_maskIny.extract_bits(maskIny, 0);
+  maskIny *= (xin < tiledVol.x());
+
+  unsigned int maskOutx{};
+  auto sg_maskOutx = sycl::ext::oneapi::group_ballot(sg, (xout + warpLane < tiledVol.x()));
+  sg_maskOutx.extract_bits(maskOutx, 0);
+  maskOutx *= (yout < tiledVol.y());
+
   const unsigned long long int one = 1;
 #elif LIBRETT_USES_HIP
   // AMD change
@@ -498,7 +506,10 @@ __global__ void transposeTiledCopy(
   const int y = by + threadIdx_y;
 
 #if LIBRETT_USES_SYCL
-  const unsigned int mask = ballot(sg, (y + warpLane < tiledVol.y())).s0() * (x < tiledVol.x());
+  unsigned int mask{};
+  auto sg_mask = sycl::ext::oneapi::group_ballot(sg, (y + warpLane < tiledVol.y()));
+  sg_mask.extract_bits(mask, 0);
+  mask *= (x < tiledVol.x());
   const unsigned int one = 1;
 #elif LIBRETT_USES_HIP // AMD change
   const unsigned long long int mask = __ballot((y + warpLane < tiledVol.y))*(x < tiledVol.x);
