@@ -715,11 +715,11 @@ void librettKernelSetSharedMemConfig() {
   // #include "calls.h"
   // #undef CALL
 
-  hipCheck(hipFuncSetSharedMemConfig((transposeTiled<float>), hipSharedMemBankSizeFourByte));
-  hipCheck(hipFuncSetSharedMemConfig((transposeTiledCopy<float>), hipSharedMemBankSizeFourByte));
+  // hipCheck(hipFuncSetSharedMemConfig((transposeTiled<float>), hipSharedMemBankSizeFourByte));
+  // hipCheck(hipFuncSetSharedMemConfig((transposeTiledCopy<float>), hipSharedMemBankSizeFourByte));
 
-  hipCheck(hipFuncSetSharedMemConfig(transposeTiled<double>, hipSharedMemBankSizeEightByte));
-  hipCheck(hipFuncSetSharedMemConfig(transposeTiledCopy<double>, hipSharedMemBankSizeEightByte));
+  // hipCheck(hipFuncSetSharedMemConfig(transposeTiled<double>, hipSharedMemBankSizeEightByte));
+  // hipCheck(hipFuncSetSharedMemConfig(transposeTiledCopy<double>, hipSharedMemBankSizeEightByte));
 
 #endif // LIBRETT_USES_HIP
 }
