@@ -118,7 +118,7 @@ if(ENABLE_SYCL)
   elseif(ENABLE_SYCL_CUDA)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${LIBRETT_CXX_FLAGS} -fsycl-targets=nvptx64-nvidia-cuda -Xsycl-target-backend --cuda-gpu-arch=sm_${CMAKE_CUDA_ARCHITECTURES} -DLIBRETT_SUBGROUP_SIZE32 -fsycl-default-sub-group-size=32")
   else()
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${LIBRETT_CXX_FLAGS} -DLIBRETT_SUBGROUP_SIZE16 -fsycl-default-sub-group-size=16")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${LIBRETT_CXX_FLAGS} -DLIBRETT_SUBGROUP_SIZE16 -fsycl-default-sub-group-size=16 -fsycl-targets=intel_gpu_pvc")
   endif()
 endif(ENABLE_SYCL)
 

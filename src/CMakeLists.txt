@@ -41,13 +41,6 @@ else(BUILD_SHARED_LIBS)
   set_target_properties(librett PROPERTIES ARCHIVE_OUTPUT_NAME librett)
 endif(BUILD_SHARED_LIBS)
 
-if(ENABLE_SYCL)
-  if(NOT DEFINED ENABLE_SYCL_HIP OR NOT DEFINED ENABLE_SYCL_CUDA)
-    target_compile_options(librett PRIVATE -fsycl -fsycl-targets=spir64_gen -Xsycl-target-backend "-device 12.60.7")
-    target_link_options(librett PRIVATE -fsycl -fsycl-targets=spir64_gen -Xsycl-target-backend "-device 12.60.7")
-  endif()
-endif(ENABLE_SYCL)
-
 if(ENABLE_CUDA)
   set_source_files_properties(${DEVICE_SOURCE_FILES} PROPERTIES LANGUAGE CUDA COMPILE_FLAGS "-x cu")
 endif(ENABLE_CUDA)
