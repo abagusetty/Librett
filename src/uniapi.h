@@ -79,7 +79,7 @@ SOFTWARE.
   #define __device__
 
 #ifdef __SYCL_DEVICE_ONLY__
-extern SYCL_EXTERNAL sycl::detail::ConvertToOpenCLType_t<sycl::vec<unsigned, 4>> __spirv_GroupNonUniformBallot(int, bool) __attribute__((convergent));
+extern SYCL_EXTERNAL sycl::detail::ConvertToOpenCLType_t<sycl::vec<unsigned, 4>> __spirv_GroupNonUniformBallot(int, bool) noexcept __attribute__((convergent));
 #endif
 
 extern SYCL_EXTERNAL sycl::vec<unsigned, 4> ballot(sycl::sub_group, bool);
