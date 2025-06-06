@@ -94,9 +94,6 @@ __global__ void transposeTiled(const int numMm, const int volMbar, const int siz
 #if LIBRETT_USES_SYCL
   const unsigned long long int maskIny = sycl::reduce_over_group(sg, (yin + warpLane < tiledVol.y()) ? (0x1 << sg.get_local_linear_id()) : 0, sycl::plus<>()) * (xin < tiledVol.x());
   const unsigned long long int maskOutx = sycl::reduce_over_group(sg, (xout + warpLane < tiledVol.x()) ? (0x1 << sg.get_local_linear_id()) : 0, sycl::plus<>()) * (yout < tiledVol.y());
-
-  // const unsigned long long int maskIny = sycl::reduce_over_group(sg, (yin + warpLane < tiledVol.y())) * (xin < tiledVol.x());
-  // const unsigned long long int maskOutx = sycl::reduce_over_group(sg, (xout + warpLane < tiledVol.x())) * (yout < tiledVol.y());
   const unsigned long long int one = 1;
 #elif LIBRETT_USES_HIP
   // AMD change
@@ -487,7 +484,6 @@ __global__ void transposeTiledCopy(
 
 #if LIBRETT_USES_SYCL
   const unsigned int mask = sycl::reduce_over_group(sg, (y + warpLane < tiledVol.y()) ? (0x1 << sg.get_local_linear_id()) : 0, sycl::plus<>()) * (x < tiledVol.x());
-  //const unsigned int mask = ballot(sg, (y + warpLane < tiledVol.y())).s0() * (x < tiledVol.x());
   const unsigned int one = 1;
 #elif LIBRETT_USES_HIP // AMD change
   const unsigned long long int mask = __ballot((y + warpLane < tiledVol.y))*(x < tiledVol.x);
